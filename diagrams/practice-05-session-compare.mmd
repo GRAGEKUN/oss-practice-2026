@@ -1,0 +1,29 @@
+flowchart TD
+    Start["前置状态（A 阶段已结束）<br/>Pi 已调用 read 工具读取 handoff.txt<br/>并回答了待办与启动命令 (pine-409)<br/>完整对话已落盘至 ~/.pi/agent/sessions/&lt;cwd&gt;/*.jsonl"]
+
+    Start --> Left1
+    Start --> Right1
+
+    subgraph Recover["左分支：恢复旧会话 (-c / --continue)"]
+        Left1["退出 Pi，重新执行<br/>node .\\packages\\coding-agent\\dist\\cli.js -c"]
+        Left2["cli/args.ts 解析 -c -> parsed.continue = true<br/>main.ts 调用 SessionManager.continueRecent()"]
+        Left3["findMostRecentSession() 定位 A 阶段 .jsonl 文件<br/>loadEntriesFromFile() 解析并重建索引"]
+        Left4["createAgentSession() 调用 sessionManager.buildSessionContext()<br/>恢复历史 AgentMessage[]（含 handoff.txt 读取结果）<br/>作为 initialState.messages 传入 new Agent()"]
+        Left5["用户输入：<br/>“接着上次的待办，给 README 起草一条启动说明……不要调用工具”"]
+        Left6["runAgentLoop() 将本次提问追加到已有历史之后<br/>streamAssistantResponse() 把【历史消息 + 本次提问】一起发给模型"]
+        Left7["模型直接依据会话历史中的交接单内容<br/>不调用工具即可写出完整启动命令<br/>npm run demo -- --profile pine-409"]
+
+        Left1 --> Left2 --> Left3 --> Left4 --> Left5 --> Left6 --> Left7
+    end
+
+    subgraph NewSess["右分支：新建会话 (/new)"]
+        Right1["在 Pi 中输入 /new"]
+        Right2["interactive-mode.ts onSubmit 命中 /new<br/>调用 handleClearCommand() -> runtimeHost.newSession()"]
+        Right3["AgentSessionRuntime.newSession() 销毁旧会话<br/>SessionManager.create() 创建空历史的新 .jsonl 文件"]
+        Right4["createAgentSession() 调用 buildSessionContext()<br/>返回空消息列表 existingSession.messages = []<br/>以此初始化全新的 Agent 实例并清空 TUI"]
+        Right5["用户输入完全相同的提问：<br/>“接着上次的待办，给 README 起草一条启动说明……不要调用工具”"]
+        Right6["runAgentLoop() 仅有本次提问<br/>streamAssistantResponse() 只把【系统提示 + 本次提问】发给模型<br/>不含 A 阶段读到的任何启动命令"]
+        Right7["因上下文缺少命令且禁止调用工具<br/>模型如实说明当前会话缺少交接单/启动命令信息"]
+
+        Right1 --> Right2 --> Right3 --> Right4 --> Right5 --> Right6 --> Right7
+    end

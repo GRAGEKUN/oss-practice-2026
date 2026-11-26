@@ -1,0 +1,21 @@
+flowchart LR
+    User["用户<br/>(终端输入 / 查看回复)"]
+    CA["coding-agent<br/>(CLI / InteractiveMode / AgentSession / read 工具)"]
+    Agent["agent<br/>(Agent.prompt / runLoop / streamAssistantResponse)"]
+    AI["ai<br/>(ModelRuntime / streamSimple / 厂商适配器)"]
+    LLM["远程模型服务<br/>(LLM HTTP / SSE API)"]
+    FS["本地文件系统<br/>(practice4.txt)"]
+
+    User -->|"1. 输入提示词"| CA
+    CA -->|"2. 启动 Agent 循环"| Agent
+    Agent -->|"3. [P4] Agent 即将请求模型<br/>调用 streamFunction"| AI
+    AI -->|"4. 发送请求与上下文"| LLM
+    LLM -->|"5. 返回回复或 toolCall(read)"| AI
+    AI -->|"6. 流式事件回传"| Agent
+    Agent -->|"7. 若有 toolCall，派发工具执行"| CA
+    CA -->|"8. read 工具读取文件"| FS
+    FS -->|"9. 返回文件内容"| CA
+    CA -->|"10. 返回 ToolResultMessage"| Agent
+    Agent -->|"11. [P4] 工具结果已加入上下文<br/>进入下一轮 streamFunction"| AI
+    Agent -->|"12. 最终文本响应事件"| CA
+    CA -->|"13. 渲染最终回复"| User

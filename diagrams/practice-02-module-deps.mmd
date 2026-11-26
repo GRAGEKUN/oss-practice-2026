@@ -1,0 +1,52 @@
+graph TD
+    %% 图例说明：箭头方向统一为「使用方 --> 被依赖方」
+    %% 仅展示基于各子包 package.json dependencies 字段核实的直接内部工作区依赖
+    %% 注：所有 11 个子包的 devDependencies / peerDependencies / optionalDependencies 均不含内部工作区依赖
+
+    subgraph L0["第 0 层：零内部依赖的基础能力与协议层"]
+        telemetry["telemetry<br/>(@earendil-works/pi-telemetry)<br/>遥测/追踪契约"]
+        schema["schema<br/>(@earendil-works/pi-schema)<br/>无 eval 的 JSON Schema 校验器"]
+        tui["tui<br/>(@earendil-works/pi-tui)<br/>终端差分渲染 UI 框架"]
+        codemode["codemode<br/>(@earendil-works/pi-codemode)<br/>QuickJS WASM 工具沙箱"]
+        mcp["mcp<br/>(@earendil-works/pi-mcp)<br/>MCP 协议客户端"]
+    end
+
+    subgraph L1["第 1 层：核心运行时与模型抽象层"]
+        chord["chord<br/>(@earendil-works/chord)<br/>跨进程对象/同步/存储运行时"]
+        ai["ai<br/>(@earendil-works/pi-ai)<br/>统一多厂商 LLM API 与目录"]
+    end
+
+    subgraph L2["第 2 层：Agent 核心循环与持久化执行层"]
+        durable["durable<br/>(@earendil-works/pi-durable)<br/>持久化会话/任务图与工具运行时"]
+        agent["agent<br/>(@earendil-works/pi-agent-core)<br/>有状态 Agent 与工具循环核心"]
+    end
+
+    subgraph L3["第 3 层：远端环境与端到端应用层"]
+        env["env<br/>(@earendil-works/pi-env)<br/>SSH 远端执行环境与守护进程"]
+        coding_agent["coding-agent<br/>(@earendil-works/pi-coding-agent)<br/>编程 Agent CLI / TUI / SDK"]
+    end
+
+    %% 直接内部运行时依赖（dependencies）
+    chord --> schema
+    chord --> telemetry
+
+    ai --> schema
+    ai --> telemetry
+
+    durable --> chord
+    durable --> ai
+    durable --> codemode
+    durable --> schema
+    durable --> telemetry
+
+    env --> chord
+    env --> durable
+
+    agent --> ai
+    agent --> schema
+
+    coding_agent --> agent
+    coding_agent --> ai
+    coding_agent --> codemode
+    coding_agent --> mcp
+    coding_agent --> tui

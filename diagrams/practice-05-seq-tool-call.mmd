@@ -1,0 +1,46 @@
+sequenceDiagram
+    autonumber
+    actor User as 用户
+    participant UI as 交互与会话层<br/>(interactive-mode.ts / agent-session.ts)
+    participant Agent as Agent 执行层<br/>(agent.ts / agent-loop.ts)
+    participant Model as 模型请求层<br/>(model-runtime.ts / pi-ai 适配器 + 远端 LLM)
+    participant Read as read 工具<br/>(core/tools/read.ts + OS 文件系统)
+
+    User->>UI: 输入指令并回车<br/>"请用 read 工具读取 handoff.txt..."
+    UI->>UI: defaultEditor.onSubmit (interactive-mode.ts:3325)<br/>-> onInputCallback -> run() 调用 session.prompt()
+    UI->>UI: AgentSession.prompt() -> _preparePrompt()<br/>-> _startRun() (agent-session.ts:2175, 1982)
+    UI->>Agent: agent.prompt(messages) (agent.ts:382)
+
+    Agent->>Agent: runPromptMessages() -> runAgentLoop()<br/>append user message, emit agent_start/turn_start (agent-loop.ts:111)
+    Agent->>Agent: 进入 runLoop() 第 1 轮<br/>调用 streamAssistantResponse() (agent-loop.ts:251, 390)
+    Agent->>Model: streamFunction(model, llmContext, options)<br/>-> modelRuntime.streamSimple() (sdk.ts:422)
+
+    Model->>Model: Models.streamSimple() 按 model.api 路由至厂商适配器<br/>(如 anthropic-messages.ts / openai-completions.ts)<br/>向远端模型发起 HTTP/SSE 请求
+    Model-->>Agent: 流式返回 SSE 事件 (start / toolcall_delta / done)<br/>包含 toolCall: read("handoff.txt")
+
+    Agent-->>UI: emit message_start / message_update / message_end
+    UI-->>User: handleEvent() 更新 AssistantMessageComponent<br/>与 ToolExecutionComponent 并 requestRender()
+
+    Agent->>Agent: 检测到 toolCalls.length > 0 (agent-loop.ts:268)<br/>executeToolCalls() -> prepareToolCall() 校验参数
+    Agent-->>UI: emit tool_execution_start
+    Agent->>Read: prepared.tool.execute(id, args, signal, onUpdate)<br/>(agent-loop.ts:835)
+
+    Read->>Read: resolveReadPathAsync + ops.access 权限检查<br/>默认走流式读取: readLocalFileChunks()<br/>(fs.promises.open + handle.createReadStream)<br/>-> selectLinesFromStream() + TextDecoder<br/>(仅非流式范围或图片才回退 fs.promises.readFile 缓冲读)
+    Read-->>Agent: 返回文本内容与 ToolResult
+
+    Agent-->>UI: emit tool_execution_end & ToolResultMessage 事件
+    UI-->>User: component.updateResult() 展示工具执行结果
+    Agent->>Agent: currentContext.messages.push(result)<br/>(agent-loop.ts:284), hasMoreToolCalls = true
+
+    Agent->>Agent: runLoop() 进入第 2 轮<br/>再次调用 streamAssistantResponse()
+    Agent->>Model: streamFunction(model, 含 toolCall 与 toolResult 的 llmContext)
+    Model->>Model: 适配器向远端模型发起第 2 次 HTTP/SSE 请求
+    Model-->>Agent: 流式返回最终回答 (text_delta / done)<br/>包含待办与 pine-409 启动命令
+
+    loop 流式输出每个增量片段
+        Agent-->>UI: emit message_update (agent-loop.ts:445)
+        UI-->>User: handleEvent("message_update") -> updateContent(..., true)<br/>-> ui.requestRender() (interactive-mode.ts:3649)
+    end
+
+    Agent-->>UI: emit message_end / turn_end / agent_end
+    UI-->>User: handleEvent("message_end") -> updateContent(..., false)<br/>-> ui.requestRender() (interactive-mode.ts:3685)<br/>用户看到完整最终回复
